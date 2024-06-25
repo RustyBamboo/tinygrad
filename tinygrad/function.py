@@ -36,6 +36,11 @@ class Reciprocal(Function):
   def backward(self, grad_output:LazyBuffer) -> LazyBuffer:
     return grad_output.e(UnaryOps.NEG).e(BinaryOps.MUL, self.ret).e(BinaryOps.MUL, self.ret)
 
+def _lazy_map_numbers(x: LazyBuffer, inf: LazyBuffer, _inf: LazyBuffer, nan: LazyBuffer, ratio: LazyBuffer):
+  """replace inf -> inf, -inf -> _inf, nan -> nan, otherwise -> ratio"""
+  return x.e(BinaryOps.CMPNE, x.const(math.inf)).e(TernaryOps.WHERE, x.e(BinaryOps.CMPNE, x).e(TernaryOps.WHERE, nan, x.e(BinaryOps.CMPNE, x.const(-math.inf)).e(TernaryOps.WHERE, ratio, _inf)), inf) # noqa: E501
+
+
 class Sin(Function):
   def _reduce_range(self, x:LazyBuffer) -> LazyBuffer:
     pi_neg = x.const(-math.pi)
@@ -62,7 +67,7 @@ class Sin(Function):
 
   def forward(self, x:LazyBuffer) -> LazyBuffer:
     self.x = x
-    return self._fastsin2(self._reduce_range(x))
+    return _lazy_map_numbers(x, x.const(math.nan), x.const(math.nan), x.const(math.nan), self._fastsin2(self._reduce_range(x)))
 
   def backward(self, grad_output:LazyBuffer) -> LazyBuffer:
     return self._fastsin2(self._reduce_range(self.x.const(math.pi / 2).e(BinaryOps.ADD, self.x.e(UnaryOps.NEG)))).e(BinaryOps.MUL, grad_output)
